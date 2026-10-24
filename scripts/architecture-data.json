@@ -72,5 +72,137 @@
       0,
       "13. Show trace, outcome and evidence"
     ]
+  ],
+  "steps": [
+    {
+      "number": 1,
+      "source": "src/server.ts",
+      "firstLine": 46,
+      "lastLine": 48,
+      "code": "const input = JSON.parse(body);\nconst prompt = validatePrompt(input.prompt);\nconst config = validateConfig(input.options);",
+      "explanation": "The server validates the prompt and experiment controls before entering runAgent. Those controls configure real SDK behaviour.",
+      "language": "typescript",
+      "sourceSHA256": "1f324e8c6ee9295fc6b39fcdc8a7604b390d3596452c0129bc538021a2db39b3"
+    },
+    {
+      "number": 2,
+      "source": "src/agent.ts",
+      "firstLine": 48,
+      "lastLine": 51,
+      "code": "export async function resetWorkspace() {\n  await mkdir(WORKSPACE, { recursive: true });\n  for (const name of [\"auth.ts\", \"auth.test.ts\", \"package.json\", \"CLAUDE.md\"]) await writeFile(resolve(WORKSPACE, name), await readFile(fixture(name)));\n}",
+      "explanation": "The reset restores every demo input from immutable fixtures before a run. This reproduces the buggy auth task and its unchanged tests.",
+      "language": "typescript",
+      "sourceSHA256": "bc18eb232f198c6ddf7f3554842cf20e9b5d040480bf2cfdd9fac823a27f2cc3"
+    },
+    {
+      "number": 3,
+      "source": "src/agent.ts",
+      "firstLine": 147,
+      "lastLine": 147,
+      "code": "const conversation = query({ prompt: config.scenario === \"inspect\" ? \"Read auth.ts and auth.test.ts. Explain the three failures without changing files.\" : prompt, options: lessonOptions(config, emit, abortController) });",
+      "explanation": "One query receives the selected task and scenario-specific options. The inspect scenario uses a read-only task; all subsequent interactions remain inside this one SDK conversation.",
+      "language": "typescript",
+      "sourceSHA256": "bc18eb232f198c6ddf7f3554842cf20e9b5d040480bf2cfdd9fac823a27f2cc3"
+    },
+    {
+      "number": 4,
+      "source": "src/agent.ts",
+      "firstLine": 105,
+      "lastLine": 105,
+      "code": "if (message.type === \"system\") detail = subtype === \"init\" ? \"Runtime initialized; tools and session metadata are available.\" : `System: ${subtype}`;",
+      "explanation": "The observer identifies system initialization and optional partial events. Each is counted as a message without automatically becoming another model turn.",
+      "language": "typescript",
+      "sourceSHA256": "bc18eb232f198c6ddf7f3554842cf20e9b5d040480bf2cfdd9fac823a27f2cc3"
+    },
+    {
+      "number": 5,
+      "source": "src/agent.ts",
+      "firstLine": 65,
+      "lastLine": 68,
+      "code": "model: MODEL, cwd: WORKSPACE,\ntools: readOnly ? [\"Read\", \"Glob\"] : [\"Read\", \"Edit\", \"Glob\", \"Bash\"],\nallowedTools: readOnly ? [\"Read\", \"Glob\"] : [\"Read\", \"Edit\", \"Glob\", \"Bash(npm test)\"],\ndisallowedTools: readOnly ? [\"Edit\", \"Write\", \"Bash\", \"WebFetch\"] : [\"Write\", \"WebFetch\"],",
+      "explanation": "These actual options configure the SDK model request and choose available tools for read-only or repair mode. The SDK performs model API transport internally.",
+      "language": "typescript",
+      "sourceSHA256": "bc18eb232f198c6ddf7f3554842cf20e9b5d040480bf2cfdd9fac823a27f2cc3"
+    },
+    {
+      "number": 6,
+      "source": "src/agent.ts",
+      "firstLine": 113,
+      "lastLine": 116,
+      "code": "if (block.type === \"tool_use\") {\n  toolId = block.id; this.requests.set(block.id, { name: block.name, group: responseGroup });\n  detail = `tool_use: ${block.name} \u00b7 ${inputSummary(block.input as Record<string, unknown>)}`;\n}",
+      "explanation": "The tool_use branch records actual request IDs and associates them with an observed response group. The model, rather than the dashboard, decides which requests arrive.",
+      "language": "typescript",
+      "sourceSHA256": "bc18eb232f198c6ddf7f3554842cf20e9b5d040480bf2cfdd9fac823a27f2cc3"
+    },
+    {
+      "number": 7,
+      "source": "src/agent.ts",
+      "firstLine": 76,
+      "lastLine": 81,
+      "code": "if (input.hook_event_name !== \"PreToolUse\") return {};\nconst detail = inputSummary(input.tool_input as Record<string, unknown>);\nif (!toolPathAllowed(input.tool_name, input.tool_input as Record<string, unknown>)) {\n  emit({ type: \"tool\", phase: \"denied\", name: input.tool_name, id: input.tool_use_id, elapsedMs: 0, detail });\n  return { hookSpecificOutput: { hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: \"Only demo reads, auth.ts edits and exactly npm test are permitted.\" } };\n}",
+      "explanation": "The PreToolUse hook checks the application guard, reports denied calls, or records a permitted call start. Tool execution itself is implemented by the SDK.",
+      "language": "typescript",
+      "sourceSHA256": "bc18eb232f198c6ddf7f3554842cf20e9b5d040480bf2cfdd9fac823a27f2cc3"
+    },
+    {
+      "number": 8,
+      "source": "src/agent.ts",
+      "firstLine": 119,
+      "lastLine": 127,
+      "code": "if (message.type === \"user\") {\n  detail = \"User input or tool feedback\";\n  if (Array.isArray(message.message.content)) {\n    for (const block of message.message.content) if (block.type === \"tool_result\") {\n      toolId = block.tool_use_id; responseGroup = this.requests.get(toolId)?.group;\n      detail = `tool_result: ${this.requests.get(toolId)?.name || \"tool\"} \u00b7 ${block.is_error ? \"tool reported an error\" : \"feedback returned to the model\"}`;\n    }\n  }\n}",
+      "explanation": "The user-message branch observes returned tool feedback and its error status. Actual execution output is handled by the SDK; this app projects its identifiers and summary.",
+      "language": "typescript",
+      "sourceSHA256": "bc18eb232f198c6ddf7f3554842cf20e9b5d040480bf2cfdd9fac823a27f2cc3"
+    },
+    {
+      "number": 9,
+      "source": "src/agent.ts",
+      "firstLine": 123,
+      "lastLine": 123,
+      "code": "toolId = block.tool_use_id; responseGroup = this.requests.get(toolId)?.group;",
+      "explanation": "tool_result.tool_use_id finds the earlier request and response group. This actual join explains which call produced the feedback.",
+      "language": "typescript",
+      "sourceSHA256": "bc18eb232f198c6ddf7f3554842cf20e9b5d040480bf2cfdd9fac823a27f2cc3"
+    },
+    {
+      "number": 10,
+      "source": "src/agent.ts",
+      "firstLine": 149,
+      "lastLine": 151,
+      "code": "for await (const message of conversation) {\n  for (const event of projector.consume(message)) { if (event.type === \"result\") gotResult = true; emit(event); }\n}",
+      "explanation": "The same query iterator is consumed while the SDK feeds tool results back to the model and repeats internally. There is no extra application-level call that fabricates this feedback.",
+      "language": "typescript",
+      "sourceSHA256": "bc18eb232f198c6ddf7f3554842cf20e9b5d040480bf2cfdd9fac823a27f2cc3"
+    },
+    {
+      "number": 11,
+      "source": "src/agent.ts",
+      "firstLine": 129,
+      "lastLine": 135,
+      "code": "if (message.type === \"result\") {\n  const success = message.subtype === \"success\" && !message.is_error;\n  detail = `Final result: ${message.subtype}`;\n  events.push({ type: \"result\", status: success ? \"success\" : message.subtype === \"success\" ? \"error\" : message.subtype,\n    text: message.subtype === \"success\" ? message.result : message.errors.join(\"\\n\"), sessionId: message.session_id, costUsd: message.total_cost_usd, turns: message.num_turns,\n    stopReason: message.stop_reason, inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens });\n}",
+      "explanation": "The typed result is projected without relabelling a limit as success. Its actual stop reason and token counts are preserved alongside the session, turns and estimated cost.",
+      "language": "typescript",
+      "sourceSHA256": "bc18eb232f198c6ddf7f3554842cf20e9b5d040480bf2cfdd9fac823a27f2cc3"
+    },
+    {
+      "number": 12,
+      "source": "src/agent.ts",
+      "firstLine": 157,
+      "lastLine": 159,
+      "code": "conversation.close();\nconst source = await readFile(TARGET, \"utf8\");\nemit({ type: \"workspace\", stage: \"after\", source, checks: await verifyFile(), changed: source !== before });",
+      "explanation": "The finally block closes the conversation, reads the real auth file and emits independent checks. This still happens after a deliberate limit or read-only run.",
+      "language": "typescript",
+      "sourceSHA256": "bc18eb232f198c6ddf7f3554842cf20e9b5d040480bf2cfdd9fac823a27f2cc3"
+    },
+    {
+      "number": 13,
+      "source": "src/client.ts",
+      "firstLine": 18,
+      "lastLine": 26,
+      "code": "function workspace(data: any) {\n  $(data.stage).textContent = data.source; Prism.highlightElement($(data.stage));\n  $(data.stage + \"-checks\").textContent = `${data.checks.passed}/${data.checks.total} independent checks passed`;\n  if (data.stage === \"after\") {\n    $(\"verdict\").textContent = data.checks.passed === data.checks.total && data.changed ? \"Verified repair\" : options.scenario === \"inspect\" && !data.changed ? \"Read-only inspection: file unchanged\" : \"Stopped or not repaired\";\n    $(\"checks\").replaceChildren();\n    for (const item of data.checks.cases) { const row = document.createElement(\"li\"); row.textContent = `${item.passed ? \"PASS\" : \"FAIL\"} \u00b7 ${item.label}`; $(\"checks\").append(row); }\n  }\n}",
+      "explanation": "The workspace handler highlights the actual source and renders each independent check. Verified repair requires changed source and all checks passing; read-only and stopped outcomes stay distinct.",
+      "language": "typescript",
+      "sourceSHA256": "85bc8589472d43fc1bce0c1058524da490ee202308d3c8360baec0b97b571f3a"
+    }
   ]
 }

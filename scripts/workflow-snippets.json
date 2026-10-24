@@ -1,0 +1,77 @@
+[
+  {
+    "source": "src/server.ts",
+    "explanation": "The server validates the prompt and experiment controls before entering runAgent. Those controls configure real SDK behaviour.",
+    "start": "      const input = JSON.parse(body);",
+    "end": "      if (busy)"
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "The reset restores every demo input from immutable fixtures before a run. This reproduces the buggy auth task and its unchanged tests.",
+    "start": "export async function resetWorkspace() {",
+    "end": "export function toolPathAllowed"
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "One query receives the selected task and scenario-specific options. The inspect scenario uses a read-only task; all subsequent interactions remain inside this one SDK conversation.",
+    "start": "  const conversation = query({ prompt:"
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "The observer identifies system initialization and optional partial events. Each is counted as a message without automatically becoming another model turn.",
+    "start": "    if (message.type === \"system\") detail ="
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "These actual options configure the SDK model request and choose available tools for read-only or repair mode. The SDK performs model API transport internally.",
+    "start": "    model: MODEL, cwd: WORKSPACE,",
+    "end": "    permissionMode:"
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "The tool_use branch records actual request IDs and associates them with an observed response group. The model, rather than the dashboard, decides which requests arrive.",
+    "start": "        if (block.type === \"tool_use\") {",
+    "end": "      }\n    }\n    if (message.type === \"user\")"
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "The PreToolUse hook checks the application guard, reports denied calls, or records a permitted call start. Tool execution itself is implemented by the SDK.",
+    "start": "        if (input.hook_event_name !== \"PreToolUse\") return {};",
+    "end": "        started.set("
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "The user-message branch observes returned tool feedback and its error status. Actual execution output is handled by the SDK; this app projects its identifiers and summary.",
+    "start": "    if (message.type === \"user\") {",
+    "end": "    if (message.type === \"stream_event\")"
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "tool_result.tool_use_id finds the earlier request and response group. This actual join explains which call produced the feedback.",
+    "start": "          toolId = block.tool_use_id; responseGroup = this.requests.get(toolId)?.group;"
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "The same query iterator is consumed while the SDK feeds tool results back to the model and repeats internally. There is no extra application-level call that fabricates this feedback.",
+    "start": "    for await (const message of conversation) {",
+    "end": "    if (!gotResult)"
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "The typed result is projected without relabelling a limit as success. Its actual stop reason and token counts are preserved alongside the session, turns and estimated cost.",
+    "start": "    if (message.type === \"result\") {",
+    "end": "    events.unshift("
+  },
+  {
+    "source": "src/agent.ts",
+    "explanation": "The finally block closes the conversation, reads the real auth file and emits independent checks. This still happens after a deliberate limit or read-only run.",
+    "start": "    conversation.close();",
+    "end": "\n  }\n}"
+  },
+  {
+    "source": "src/client.ts",
+    "explanation": "The workspace handler highlights the actual source and renders each independent check. Verified repair requires changed source and all checks passing; read-only and stopped outcomes stay distinct.",
+    "start": "function workspace(data: any) {",
+    "end": "function consume(data: any)"
+  }
+]
