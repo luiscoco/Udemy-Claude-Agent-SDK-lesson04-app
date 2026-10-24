@@ -1,0 +1,76 @@
+{
+  "lanes": [
+    "Student",
+    "Host observer",
+    "Agent SDK",
+    "Claude API",
+    "Demo tools"
+  ],
+  "arrows": [
+    [
+      0,
+      1,
+      "1. Choose scenario and loop limits"
+    ],
+    [
+      1,
+      4,
+      "2. Reset auth.ts and test fixtures"
+    ],
+    [
+      1,
+      2,
+      "3. query(prompt, options)"
+    ],
+    [
+      2,
+      1,
+      "4. Yield system/init and partial events"
+    ],
+    [
+      2,
+      3,
+      "5. Send prompt and tool definitions"
+    ],
+    [
+      3,
+      2,
+      "6. Request one or more tools"
+    ],
+    [
+      2,
+      4,
+      "7. Apply hooks and run permitted tools"
+    ],
+    [
+      4,
+      2,
+      "8. Return execution feedback"
+    ],
+    [
+      2,
+      1,
+      "9. Yield user/tool_result with matching ID"
+    ],
+    [
+      2,
+      3,
+      "10. Send feedback; repeat if needed"
+    ],
+    [
+      2,
+      1,
+      "11. Yield typed final result and metadata"
+    ],
+    [
+      1,
+      4,
+      "12. Independently check actual auth.ts"
+    ],
+    [
+      1,
+      0,
+      "13. Show trace, outcome and evidence"
+    ]
+  ]
+}

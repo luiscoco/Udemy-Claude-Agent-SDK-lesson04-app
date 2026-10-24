@@ -1,0 +1,58 @@
+[
+  {
+    "number": "01",
+    "title": "Create a reproducible failing task",
+    "source": "fixtures/auth.ts",
+    "explanation": "Three cases fail: a missing user crashes, an inactive administrator is allowed, and an active viewer is allowed. Only an active administrator should pass. The test file remains unchanged.",
+    "code": "export type User = { active: boolean; role: string };\n\nexport function canAccessAdmin(user: User | null): boolean {\n  return user!.active || user!.role === \"admin\";\n}\n",
+    "language": "typescript"
+  },
+  {
+    "number": "02",
+    "title": "Configure the scenario and limits",
+    "source": "src/agent.ts",
+    "explanation": "Inputs are validated before starting the runtime. The limit preset forces maxTurns to 1. Effort and partial-message settings are actual SDK options, not a simulated dashboard.",
+    "code": "export function validateConfig(value: unknown): RunConfig {\n  const v = (value || {}) as Partial<RunConfig>;\n  const config = { ...DEFAULT_CONFIG, ...v };\n  if (![\"repair\", \"limit\", \"inspect\"].includes(config.scenario) || ![\"low\", \"high\"].includes(config.effort)) throw new Error(\"Choose a supported scenario and effort.\");\n  if (!Number.isInteger(config.maxTurns) || config.maxTurns < 1 || config.maxTurns > 12) throw new Error(\"maxTurns must be 1\u201312.\");\n  if (typeof config.maxBudgetUsd !== \"number\" || !Number.isFinite(config.maxBudgetUsd) || config.maxBudgetUsd < 0.0001 || config.maxBudgetUsd > 1) throw new Error(\"Budget must be $0.0001\u2013$1.\");\n  if (typeof config.partial !== \"boolean\" || typeof config.project !== \"boolean\") throw new Error(\"Use boolean streaming/settings options.\");\n  if (config.scenario === \"limit\") config.maxTurns = 1;\n  return config;\n}",
+    "language": "typescript"
+  },
+  {
+    "number": "03",
+    "title": "Set availability, approval and settings",
+    "source": "src/agent.ts",
+    "explanation": "The repair scenario enables Read/Edit/Glob/Bash, with only exactly npm test allowed by the host guard. Read-only inspection removes editing and Bash. Project settings are opt-in and the fixture includes a classroom CLAUDE.md.",
+    "code": "export function lessonOptions(config: RunConfig, emit: (event: LabEvent) => void, abortController = new AbortController()): Options {\n  const started = new Map<string, number>();\n  const readOnly = config.scenario === \"inspect\";\n  return {\n    model: MODEL, cwd: WORKSPACE,\n    tools: readOnly ? [\"Read\", \"Glob\"] : [\"Read\", \"Edit\", \"Glob\", \"Bash\"],\n    allowedTools: readOnly ? [\"Read\", \"Glob\"] : [\"Read\", \"Edit\", \"Glob\", \"Bash(npm test)\"],\n    disallowedTools: readOnly ? [\"Edit\", \"Write\", \"Bash\", \"WebFetch\"] : [\"Write\", \"WebFetch\"],\n    permissionMode: readOnly ? \"default\" : \"acceptEdits\",\n    maxTurns: config.maxTurns, maxBudgetUsd: config.maxBudgetUsd, effort: config.effort,\n    includePartialMessages: config.partial, settingSources: config.project ? [\"project\"] : [],\n    persistSession: false, mcpServers: {}, plugins: [], abortController,\n    systemPrompt: readOnly ? \"Read auth.ts and auth.test.ts using two Read calls in the same response if possible. Explain the bugs briefly. Never edit files or run commands. Tool concurrency is chosen by the runtime.\" : \"Fix only auth.ts. Only an active administrator may access admin; null users are denied. Keep the API and all tests unchanged. First call Bash with exactly npm test, with no other tool call in that first response. Wait for its result. Then inspect the source and tests, make a minimal Edit, and run exactly npm test again. Do not use shell commands other than npm test. Keep explanations brief. Do not repeat a successful edit.\",\n    hooks: {\n      PreToolUse: [{ hooks: [async (input) => {\n        if (input.hook_event_name !== \"PreToolUse\") return {};\n        const detail = inputSummary(input.tool_input as Record<string, unknown>);\n        if (!toolPathAllowed(input.tool_name, input.tool_input as Record<string, unknown>)) {\n          emit({ type: \"tool\", phase: \"denied\", name: input.tool_name, id: input.tool_use_id, elapsedMs: 0, detail });\n          return { hookSpecificOutput: { hookEventName: \"PreToolUse\", permissionDecision: \"deny\", permissionDecisionReason: \"Only demo reads, auth.ts edits and exactly npm test are permitted.\" } };\n        }\n        started.set(input.tool_use_id, Date.now());\n        emit({ type: \"tool\", phase: \"start\", name: input.tool_name, id: input.tool_use_id, elapsedMs: 0, detail });\n        return {};\n      }] }],\n      PostToolUse: [{ hooks: [async (input) => {\n        if (input.hook_event_name !== \"PostToolUse\") return {};\n        emit({ type: \"tool\", phase: \"end\", name: input.tool_name, id: input.tool_use_id, elapsedMs: Date.now() - (started.get(input.tool_use_id) || Date.now()), detail: inputSummary(input.tool_input as Record<string, unknown>) });\n        return {};\n      }] }],\n    },\n  };\n}",
+    "language": "typescript"
+  },
+  {
+    "number": "04",
+    "title": "Group assistant response IDs",
+    "source": "src/agent.ts",
+    "explanation": "Every observed message increments its type count. Assistant message.message.id groups blocks from the same response. This grouped count is labelled separately from the final SDK num_turns.",
+    "code": "if (message.type === \"assistant\") {\n      const id = message.message.id;\n      if (!this.responses.has(id)) this.responses.set(id, this.responses.size + 1);\n      responseGroup = this.responses.get(id)!;\n      detail = \"Assistant content block\";\n      for (const block of message.message.content) {\n        if (block.type === \"text\") { events.push({ type: \"answer\", text: block.text }); detail = \"Assistant text (not a completion signal)\"; }\n        if (block.type === \"tool_use\") {\n          toolId = block.id; this.requests.set(block.id, { name: block.name, group: responseGroup });\n          detail = `tool_use: ${block.name} \u00b7 ${inputSummary(block.input as Record<string, unknown>)}`;\n        }\n      }\n    }",
+    "language": "typescript"
+  },
+  {
+    "number": "05",
+    "title": "Match tool results to their requests",
+    "source": "src/agent.ts",
+    "explanation": "A tool request records its block ID and response group. A later user tool_result carries tool_use_id, so feedback can be linked without assuming every user message is a human prompt.",
+    "code": "if (message.type === \"user\") {\n      detail = \"User input or tool feedback\";\n      if (Array.isArray(message.message.content)) {\n        for (const block of message.message.content) if (block.type === \"tool_result\") {\n          toolId = block.tool_use_id; responseGroup = this.requests.get(toolId)?.group;\n          detail = `tool_result: ${this.requests.get(toolId)?.name || \"tool\"} \u00b7 ${block.is_error ? \"tool reported an error\" : \"feedback returned to the model\"}`;\n        }\n      }\n    }",
+    "language": "typescript"
+  },
+  {
+    "number": "06",
+    "title": "Preserve result metadata on every subtype",
+    "source": "src/agent.ts",
+    "explanation": "Only success with is_error false is success. Other subtypes keep their identity while cost, usage, turn count, stop reason and session ID remain available. Stream events update counts without inventing more turns.",
+    "code": "if (message.type === \"stream_event\") detail = `Partial event: ${message.event.type} (not another turn)`;\n    if (message.type === \"result\") {\n      const success = message.subtype === \"success\" && !message.is_error;\n      detail = `Final result: ${message.subtype}`;\n      events.push({ type: \"result\", status: success ? \"success\" : message.subtype === \"success\" ? \"error\" : message.subtype,\n        text: message.subtype === \"success\" ? message.result : message.errors.join(\"\\n\"), sessionId: message.session_id, costUsd: message.total_cost_usd, turns: message.num_turns,\n        stopReason: message.stop_reason, inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens });\n    }",
+    "language": "typescript"
+  },
+  {
+    "number": "07",
+    "title": "Iterate to completion, then check the file",
+    "source": "src/agent.ts",
+    "explanation": "The host does not break at the result. If the runtime throws after yielding a result, the observed subtype is preserved. A failure before any result remains an error. Independent host checks examine the actual resulting auth.ts.",
+    "code": "export async function runAgent(prompt: string, emit: (event: LabEvent) => void, abortController = new AbortController(), config = DEFAULT_CONFIG) {\n  config = validateConfig(config);\n  await resetWorkspace();\n  const before = await readFile(TARGET, \"utf8\");\n  emit({ type: \"config\", options: config });\n  emit({ type: \"workspace\", stage: \"before\", source: before, checks: await verifyFile(), changed: false });\n  const projector = new TraceProjector(); let gotResult = false;\n  const conversation = query({ prompt: config.scenario === \"inspect\" ? \"Read auth.ts and auth.test.ts. Explain the three failures without changing files.\" : prompt, options: lessonOptions(config, emit, abortController) });\n  try {\n    for await (const message of conversation) {\n      for (const event of projector.consume(message)) { if (event.type === \"result\") gotResult = true; emit(event); }\n    }\n    if (!gotResult) throw new Error(\"No final SDK result was received.\");\n  } catch (error) {\n    if (!gotResult) throw error;\n    emit({ type: \"notice\", text: \"The runtime closed after a final result. Its observed subtype is preserved.\" });\n  } finally {\n    conversation.close();\n    const source = await readFile(TARGET, \"utf8\");\n    emit({ type: \"workspace\", stage: \"after\", source, checks: await verifyFile(), changed: source !== before });\n  }\n}",
+    "language": "typescript"
+  }
+]

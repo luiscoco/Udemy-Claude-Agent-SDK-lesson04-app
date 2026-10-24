@@ -1,0 +1,6 @@
+{
+  "name": "lesson04-demo-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --experimental-strip-types --test auth.test.ts" }
+}

@@ -1,0 +1,95 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent SDK LESSON 04 · Explain the &lt;em&gt;observer code.&lt;/em&gt;</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/code-highlighting.css"></head><body><main><div class="brand"><a href="/">How <span>Claude Agent SDK</span> Works</a><span class="badge">LESSON 04 / AGENT LOOP EXPLORER</span></div><header class="hero"><div><div class="eyebrow">PROMPT · TOOLS · REPEAT · RESULT</div><h1>Explain the <em>observer code.</em></h1><p class="lead">Connect each control and visible event to its actual TypeScript implementation.</p></div><img src="/astronaut.png" alt="Course astronaut mascot"></header><nav class="nav" aria-label="Application sections"><a href="/">Application lab</a><a href="/learn.html">What you will learn</a><a href="/run.html">How to run</a><a href="/architecture.html">Architecture & workflow</a><a href="/walkthrough.html" aria-current="page">Code walkthrough</a><button id="theme" type="button">Dark mode</button></nav><section class="note">These excerpts come from the actual app. The host projects safe observations instead of returning raw runtime configuration or hidden reasoning. Full functions remain in the labelled source files.</section><section class="step"><span class="number">01</span><h2>Create a reproducible failing task</h2><p>Three cases fail: a missing user crashes, an inactive administrator is allowed, and an active viewer is allowed. Only an active administrator should pass. The test file remains unchanged.</p><p class="source">Source: fixtures/auth.ts</p><pre><code class="language-typescript">export type User = { active: boolean; role: string };
+
+export function canAccessAdmin(user: User | null): boolean {
+  return user!.active || user!.role === &quot;admin&quot;;
+}
+</code></pre></section><section class="step"><span class="number">02</span><h2>Configure the scenario and limits</h2><p>Inputs are validated before starting the runtime. The limit preset forces maxTurns to 1. Effort and partial-message settings are actual SDK options, not a simulated dashboard.</p><p class="source">Source: src/agent.ts</p><pre><code class="language-typescript">export function validateConfig(value: unknown): RunConfig {
+  const v = (value || {}) as Partial&lt;RunConfig&gt;;
+  const config = { ...DEFAULT_CONFIG, ...v };
+  if (![&quot;repair&quot;, &quot;limit&quot;, &quot;inspect&quot;].includes(config.scenario) || ![&quot;low&quot;, &quot;high&quot;].includes(config.effort)) throw new Error(&quot;Choose a supported scenario and effort.&quot;);
+  if (!Number.isInteger(config.maxTurns) || config.maxTurns &lt; 1 || config.maxTurns &gt; 12) throw new Error(&quot;maxTurns must be 1–12.&quot;);
+  if (typeof config.maxBudgetUsd !== &quot;number&quot; || !Number.isFinite(config.maxBudgetUsd) || config.maxBudgetUsd &lt; 0.0001 || config.maxBudgetUsd &gt; 1) throw new Error(&quot;Budget must be $0.0001–$1.&quot;);
+  if (typeof config.partial !== &quot;boolean&quot; || typeof config.project !== &quot;boolean&quot;) throw new Error(&quot;Use boolean streaming/settings options.&quot;);
+  if (config.scenario === &quot;limit&quot;) config.maxTurns = 1;
+  return config;
+}</code></pre></section><section class="step"><span class="number">03</span><h2>Set availability, approval and settings</h2><p>The repair scenario enables Read/Edit/Glob/Bash, with only exactly npm test allowed by the host guard. Read-only inspection removes editing and Bash. Project settings are opt-in and the fixture includes a classroom CLAUDE.md.</p><p class="source">Source: src/agent.ts</p><pre><code class="language-typescript">export function lessonOptions(config: RunConfig, emit: (event: LabEvent) =&gt; void, abortController = new AbortController()): Options {
+  const started = new Map&lt;string, number&gt;();
+  const readOnly = config.scenario === &quot;inspect&quot;;
+  return {
+    model: MODEL, cwd: WORKSPACE,
+    tools: readOnly ? [&quot;Read&quot;, &quot;Glob&quot;] : [&quot;Read&quot;, &quot;Edit&quot;, &quot;Glob&quot;, &quot;Bash&quot;],
+    allowedTools: readOnly ? [&quot;Read&quot;, &quot;Glob&quot;] : [&quot;Read&quot;, &quot;Edit&quot;, &quot;Glob&quot;, &quot;Bash(npm test)&quot;],
+    disallowedTools: readOnly ? [&quot;Edit&quot;, &quot;Write&quot;, &quot;Bash&quot;, &quot;WebFetch&quot;] : [&quot;Write&quot;, &quot;WebFetch&quot;],
+    permissionMode: readOnly ? &quot;default&quot; : &quot;acceptEdits&quot;,
+    maxTurns: config.maxTurns, maxBudgetUsd: config.maxBudgetUsd, effort: config.effort,
+    includePartialMessages: config.partial, settingSources: config.project ? [&quot;project&quot;] : [],
+    persistSession: false, mcpServers: {}, plugins: [], abortController,
+    systemPrompt: readOnly ? &quot;Read auth.ts and auth.test.ts using two Read calls in the same response if possible. Explain the bugs briefly. Never edit files or run commands. Tool concurrency is chosen by the runtime.&quot; : &quot;Fix only auth.ts. Only an active administrator may access admin; null users are denied. Keep the API and all tests unchanged. First call Bash with exactly npm test, with no other tool call in that first response. Wait for its result. Then inspect the source and tests, make a minimal Edit, and run exactly npm test again. Do not use shell commands other than npm test. Keep explanations brief. Do not repeat a successful edit.&quot;,
+    hooks: {
+      PreToolUse: [{ hooks: [async (input) =&gt; {
+        if (input.hook_event_name !== &quot;PreToolUse&quot;) return {};
+        const detail = inputSummary(input.tool_input as Record&lt;string, unknown&gt;);
+        if (!toolPathAllowed(input.tool_name, input.tool_input as Record&lt;string, unknown&gt;)) {
+          emit({ type: &quot;tool&quot;, phase: &quot;denied&quot;, name: input.tool_name, id: input.tool_use_id, elapsedMs: 0, detail });
+          return { hookSpecificOutput: { hookEventName: &quot;PreToolUse&quot;, permissionDecision: &quot;deny&quot;, permissionDecisionReason: &quot;Only demo reads, auth.ts edits and exactly npm test are permitted.&quot; } };
+        }
+        started.set(input.tool_use_id, Date.now());
+        emit({ type: &quot;tool&quot;, phase: &quot;start&quot;, name: input.tool_name, id: input.tool_use_id, elapsedMs: 0, detail });
+        return {};
+      }] }],
+      PostToolUse: [{ hooks: [async (input) =&gt; {
+        if (input.hook_event_name !== &quot;PostToolUse&quot;) return {};
+        emit({ type: &quot;tool&quot;, phase: &quot;end&quot;, name: input.tool_name, id: input.tool_use_id, elapsedMs: Date.now() - (started.get(input.tool_use_id) || Date.now()), detail: inputSummary(input.tool_input as Record&lt;string, unknown&gt;) });
+        return {};
+      }] }],
+    },
+  };
+}</code></pre></section><section class="step"><span class="number">04</span><h2>Group assistant response IDs</h2><p>Every observed message increments its type count. Assistant message.message.id groups blocks from the same response. This grouped count is labelled separately from the final SDK num_turns.</p><p class="source">Source: src/agent.ts</p><pre><code class="language-typescript">if (message.type === &quot;assistant&quot;) {
+      const id = message.message.id;
+      if (!this.responses.has(id)) this.responses.set(id, this.responses.size + 1);
+      responseGroup = this.responses.get(id)!;
+      detail = &quot;Assistant content block&quot;;
+      for (const block of message.message.content) {
+        if (block.type === &quot;text&quot;) { events.push({ type: &quot;answer&quot;, text: block.text }); detail = &quot;Assistant text (not a completion signal)&quot;; }
+        if (block.type === &quot;tool_use&quot;) {
+          toolId = block.id; this.requests.set(block.id, { name: block.name, group: responseGroup });
+          detail = `tool_use: ${block.name} · ${inputSummary(block.input as Record&lt;string, unknown&gt;)}`;
+        }
+      }
+    }</code></pre></section><section class="step"><span class="number">05</span><h2>Match tool results to their requests</h2><p>A tool request records its block ID and response group. A later user tool_result carries tool_use_id, so feedback can be linked without assuming every user message is a human prompt.</p><p class="source">Source: src/agent.ts</p><pre><code class="language-typescript">if (message.type === &quot;user&quot;) {
+      detail = &quot;User input or tool feedback&quot;;
+      if (Array.isArray(message.message.content)) {
+        for (const block of message.message.content) if (block.type === &quot;tool_result&quot;) {
+          toolId = block.tool_use_id; responseGroup = this.requests.get(toolId)?.group;
+          detail = `tool_result: ${this.requests.get(toolId)?.name || &quot;tool&quot;} · ${block.is_error ? &quot;tool reported an error&quot; : &quot;feedback returned to the model&quot;}`;
+        }
+      }
+    }</code></pre></section><section class="step"><span class="number">06</span><h2>Preserve result metadata on every subtype</h2><p>Only success with is_error false is success. Other subtypes keep their identity while cost, usage, turn count, stop reason and session ID remain available. Stream events update counts without inventing more turns.</p><p class="source">Source: src/agent.ts</p><pre><code class="language-typescript">if (message.type === &quot;stream_event&quot;) detail = `Partial event: ${message.event.type} (not another turn)`;
+    if (message.type === &quot;result&quot;) {
+      const success = message.subtype === &quot;success&quot; &amp;&amp; !message.is_error;
+      detail = `Final result: ${message.subtype}`;
+      events.push({ type: &quot;result&quot;, status: success ? &quot;success&quot; : message.subtype === &quot;success&quot; ? &quot;error&quot; : message.subtype,
+        text: message.subtype === &quot;success&quot; ? message.result : message.errors.join(&quot;\n&quot;), sessionId: message.session_id, costUsd: message.total_cost_usd, turns: message.num_turns,
+        stopReason: message.stop_reason, inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens });
+    }</code></pre></section><section class="step"><span class="number">07</span><h2>Iterate to completion, then check the file</h2><p>The host does not break at the result. If the runtime throws after yielding a result, the observed subtype is preserved. A failure before any result remains an error. Independent host checks examine the actual resulting auth.ts.</p><p class="source">Source: src/agent.ts</p><pre><code class="language-typescript">export async function runAgent(prompt: string, emit: (event: LabEvent) =&gt; void, abortController = new AbortController(), config = DEFAULT_CONFIG) {
+  config = validateConfig(config);
+  await resetWorkspace();
+  const before = await readFile(TARGET, &quot;utf8&quot;);
+  emit({ type: &quot;config&quot;, options: config });
+  emit({ type: &quot;workspace&quot;, stage: &quot;before&quot;, source: before, checks: await verifyFile(), changed: false });
+  const projector = new TraceProjector(); let gotResult = false;
+  const conversation = query({ prompt: config.scenario === &quot;inspect&quot; ? &quot;Read auth.ts and auth.test.ts. Explain the three failures without changing files.&quot; : prompt, options: lessonOptions(config, emit, abortController) });
+  try {
+    for await (const message of conversation) {
+      for (const event of projector.consume(message)) { if (event.type === &quot;result&quot;) gotResult = true; emit(event); }
+    }
+    if (!gotResult) throw new Error(&quot;No final SDK result was received.&quot;);
+  } catch (error) {
+    if (!gotResult) throw error;
+    emit({ type: &quot;notice&quot;, text: &quot;The runtime closed after a final result. Its observed subtype is preserved.&quot; });
+  } finally {
+    conversation.close();
+    const source = await readFile(TARGET, &quot;utf8&quot;);
+    emit({ type: &quot;workspace&quot;, stage: &quot;after&quot;, source, checks: await verifyFile(), changed: source !== before });
+  }
+}</code></pre></section><div class="actions"><a class="button" href="/architecture.html">← UML sequence</a><a class="button" href="/">Try an experiment →</a></div><footer>CLAUDE AGENT SDK · LESSON 04 · OBSERVE MESSAGES · CORRELATE TOOLS · CHECK RESULTS<br>TypeScript · local runtime · API key stays on the server</footer></main><script src="/navigation.js"></script><script src="/prism.js"></script><script src="/prism-python.min.js"></script><script src="/code-highlighting.js"></script></body></html>

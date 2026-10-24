@@ -1,0 +1,9 @@
+{
+  "src/agent.ts": "bc18eb232f198c6ddf7f3554842cf20e9b5d040480bf2cfdd9fac823a27f2cc3",
+  "src/sample.ts": "9d5b09d722ee059b3a86d2450ed6d8a2dc73c5e4951ea2d0bb30f0b9ec55add7",
+  "src/server.ts": "c148c6558c75b9ae3ff44a07f389e7ef267791bdfc17407592662792559c0b86",
+  "src/client.ts": "83943ab2e677a663d65493bb76e7fcd8cde677da0af616e0f77a2dd2101bfc9d",
+  "scripts/check-auth.mjs": "aca7326aeb44b098f1cde38fa203cf096cfe1b5a255f65690eadaab6e8cb73f6",
+  "fixtures/auth.ts": "2c0091c2bf28fed5e971836e45e899fdca71166e40e6d770d71f7e39b5b24a64",
+  "package.json": "3422cc9ec2beef26076782248e8cc326aa39814c520bcfe47885e9b06209d51a"
+}
