@@ -54,6 +54,7 @@ $("form").addEventListener("submit", async (event) => {
   for (const id of ["answer", "result-text", "notice", "session", "usage"]) $(id).textContent = "";
   for (const id of ["messages", "responses", "requests", "turns", "count-system", "count-assistant", "count-user", "count-stream_event", "count-result"]) $(id).textContent = "0";
   $("status").textContent = "running"; $("after").textContent = "Waiting for the actual resulting file."; $("verdict").textContent = "Running"; $("checks").replaceChildren();
+  $("after-checks").textContent = "Not checked"; $("cost").textContent = "—"; $("stop").textContent = "—";
   options = { scenario: input("scenario").value, maxTurns: Number(input("max-turns").value), maxBudgetUsd: Number(input("budget").value), effort: input("effort").value, partial: input("partial").checked, project: input("project").checked };
   try {
     const response = await fetch("/api/query", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: input("prompt").value, options }) });

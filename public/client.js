@@ -88,6 +88,9 @@ $("form").addEventListener("submit", async (event) => {
     $("after").textContent = "Waiting for the actual resulting file.";
     $("verdict").textContent = "Running";
     $("checks").replaceChildren();
+    $("after-checks").textContent = "Not checked";
+    $("cost").textContent = "—";
+    $("stop").textContent = "—";
     options = { scenario: input("scenario").value, maxTurns: Number(input("max-turns").value), maxBudgetUsd: Number(input("budget").value), effort: input("effort").value, partial: input("partial").checked, project: input("project").checked };
     try {
         const response = await fetch("/api/query", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: input("prompt").value, options }) });
